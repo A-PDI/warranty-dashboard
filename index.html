@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Warranty Claims Dashboard</title>
+<style>
+  * {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    margin: 0; padding: 0; box-sizing: border-box;
+  }
+  body { padding: 16px; background: #ffffff; color: #323130; }
+
+  /* ── Filter Bar ── */
+  .filter-bar {
+    display: flex; flex-wrap: wrap; gap: 12px;
+    padding: 16px; background: #f3f2f1; border-radius: 8px;
+    margin-bottom: 16px; align-items: flex-end;
+  }
+  .filter-group { display: flex; flex-direction: column; gap: 4px; min-width: 160px; }
+  .filter-group label { font-size: 12px; font-weight: 600; color: #605e5c; text-transform: uppercase; letter-spacing: 0.5px; }
+  .filter-group select,
+  .filter-group input {
+    padding: 7px 10px; border: 1px solid #8a8886; border-radius: 4px;
+    font-size: 14px; background: #fff; transition: border-color 0.15s;
+  }
+  .filter-group select:focus,
+  .filter-group input:focus { border-color: #0078d4; outline: none; box-shadow: 0 0 0 1px #0078d4; }
+
+  .btn-group { display: flex; gap: 8px; align-items: flex-end; }
+  .btn {
+    padding: 8px 20px; border: none; border-radius: 4px;
+    font-size: 14px; font-weight: 600; cursor: pointer; height: 35px;
+    transition: background 0.15s;
+  }
+  .btn-primary { background: #0078d4; color: #fff; }
+  .btn-primary:hover { background: #106ebe; }
+  .btn-secondary { background: #fff; color: #323130; border: 1px solid #8a8886; }
+  .btn-secondary:hover { background: #f3f2f1; }
+
+  /* ── Summary Cards ── */
+  .summary-row {
+    display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap;
+  }
+  .summary-card {
+    flex: 1; min-width: 140px; padding: 16px; background: #fff;
+    border: 1px solid #edebe9; border-radius: 8px; text-align: center;
+    border-top: 3px solid #0078d4;
+  }
+  .summary-card.approved { border-top-color: #107c10; }
+  .summary-card.denied { border-top-color: #d13438; }
+  .summary-card.pending { border-top-color: #ffaa44; }
+  .summary-card .card-number { font-size: 28px; font-weight: 700; color: #323130; }
+  .summary-card .card-label { font-size: 12px; color: #605e5c; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+  /* ── Results ── */
+  .results-bar {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 8px; font-size: 13px; color: #605e5c;
+  }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; min-width: 900px; }
+  th {
+    text-align: left; padding: 10px 12px; background: #0078d4; color: #fff;
+    font-size: 12px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.5px; position: sticky; top: 0; cursor: pointer;
+    user-select: none; white-space: nowrap;
+  }
+  th:hover { background: #106ebe; }
+  th .sort-arrow { margin-left: 4px; font-size: 10px; }
+  td {
+    padding: 9px 12px; font-size: 13px; border-bottom: 1px solid #edebe9;
+    color: #323130;
+  }
+  tr:hover td { background: #f3f2f1; }
+
+  .badge {
+    display: inline-block; padding: 2px 10px; border-radius: 12px;
+    font-size: 12px; font-weight: 600; white-space: nowrap;
+  }
+  .badge-approved { background: #dff6dd; color: #107c10; }
+  .badge-denied { background: #fde7e9; color: #d13438; }
+  .badge-pending { background: #fff4ce; color: #797673; }
+  .badge-open { background: #deecf9; color: #0078d4; }
+  .badge-closed { background: #f3f2f1; color: #605e5c; }
+
+  .claim-link {
+    color: #0078d4; text-decoration: none; font-weight: 600; cursor: pointer;
+  }
+  .claim-link:hover { text-decoration: underline; }
+
+  .loading {
+    text-align: center; padding: 60px; color: #605e5c;
+    font-size: 14px;
+  }
+  .loading .spinner {
+    display: inline-block; width: 24px; height: 24px;
+    border: 3px solid #edebe9; border-top-color: #0078d4;
+    border-radius: 50%; animation: spin 0.8s linear infinite;
+    margin-bottom: 12px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .no-results { text-align: center; padding: 60px; color: #a19f9d; }
+  .error-msg { text-align: center; padding: 40px; color: #d13438; background: #fde7e9; border-radius: 8px; margin: 16px 0; }
+
+  /* ── Pagination ── */
+  .pagination {
+    display: flex; justify-content: center; gap: 4px; margin-top: 16px;
+  }
+  .pagination button {
+    padding: 6px 12px; border: 1px solid #edebe9; background: #fff;
+    border-radius: 4px; cursor: pointer; font-size: 13px;
+  }
+  .pagination button.active { background: #0078d4; color: #fff; border-color: #0078d4; }
+  .pagination button:hover:not(.active) { background: #f3f2f1; }
+</style>
+</head>
+<body>
+
+<!-- ── Filter Bar ── -->
+<div class="filter-bar" id="filterBar">
+  <div class="filter-group">
+    <label>Customer</label>
+    <select id="filterCustomer"><option value="">All Customers</option></select>
+  </div>
+  <div class="filter-group">
+    <label>Decision</label>
+    <select id="filterDecision">
+      <option value="">All Decisions</option>
+    </select>
+  </div>
+  <div class="filter-group">
+    <label>Status</label>
+    <select id="filterStatus">
+      <option value="">All Statuses</option>
+    </select>
+  </div>
+  <div class="filter-group">
+    <label>Engine Make/Model</label>
+    <select id="filterEngine"><option value="">All Engines</option></select>
+  </div>
+  <div class="filter-group">
+    <label>Date From</label>
+    <input type="date" id="filterDateFrom" />
+  </div>
+  <div class="filter-group">
+    <label>Date To</label>
+    <input type="date" id="filterDateTo" />
+  </div>
+  <div class="filter-group">
+    <label>Search</label>
+    <input type="text" id="filterSearch" placeholder="RMA, Invoice, Part #..." />
+  </div>
+  <div class="btn-group">
+    <button class="btn btn-primary" onclick="applyFilters()">Apply</button>
+    <button class="btn btn-secondary" onclick="clearFilters()">Clear</button>
+  </div>
+</div>
+
+<!-- ── Summary Cards ── -->
+<div class="summary-row" id="summaryRow">
+  <div class="summary-card"><div class="card-number" id="totalCount">-</div><div class="card-label">Total Claims</div></div>
+  <div class="summary-card approved"><div class="card-number" id="approvedCount">-</div><div class="card-label">Approved</div></div>
+  <div class="summary-card denied"><div class="card-number" id="deniedCount">-</div><div class="card-label">Denied</div></div>
+  <div class="summary-card pending"><div class="card-number" id="pendingCount">-</div><div class="card-label">Pending</div></div>
+</div>
+
+<!-- ── Results ── -->
+<div class="results-bar">
+  <span id="resultsCount"></span>
+  <span id="exportLink" style="display:none;">
+    <a href="#" onclick="exportCSV()" style="color:#0078d4; text-decoration:none; font-weight:600;">Export CSV</a>
+  </span>
+</div>
+
+<div id="resultsContainer">
+  <div class="loading"><div class="spinner"></div><br>Loading warranty claims...</div>
+</div>
+
+<div class="pagination" id="pagination"></div>
+
+<script>
+// ================================================================
+// CONFIGURATION — UPDATE THESE THREE VALUES
+// ================================================================
+const SP_SITE_URL  = 'https://yourtenant.sharepoint.com/sites/yoursite';
+const CLAIMS_LIST  = 'WarrantyClaims';
+const PRODUCTS_LIST = 'WarrantyProducts';
+
+const CLAIM_FIELDS = [
+  'Id','Title','RMA_Number','Invoice_Number','RMA_Date','Invoice_Date',
+  'Customer_Name','Engine_Make_Model','Engine_Serial',
+  'Date_Installed','Install_Hours','Date_Failed','Failure_Hours',
+  'Failure_Description','Decision','Status','SubmittedBy','SubmittedOn'
+].join(',');
+
+const PAGE_SIZE = 25;
+
+// ================================================================
+// STATE
+// ================================================================
+let allClaims = [];
+let filteredClaims = [];
+let currentPage = 1;
+let sortField = 'Id';
+let sortAsc = false;
+
+// ================================================================
+// DATA LOADING — CROSS-DOMAIN APPROACH
+// ================================================================
+
+/*
+  This function attempts three strategies in order:
+  1. Direct fetch (works when hosted on same SP domain)
+  2. SP.RequestExecutor cross-domain library (works for SP Add-in scenarios)
+  3. Falls back to asking user to host on SP instead
+*/
+
+async function loadData() {
+  try {
+    // Attempt direct fetch — this works if:
+    //   - HTML is hosted on the SAME SharePoint domain (SiteAssets), OR
+    //   - The browser session has valid SP auth cookies and CORS is allowed
+    const url = `${SP_SITE_URL}/_api/web/lists/getbytitle('${CLAIMS_LIST}')/items` +
+      `?$select=${CLAIM_FIELDS}&$top=5000&$orderby=Id desc`;
+
+    const resp = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json;odata=nometadata'
+      },
+      credentials: 'include'   // sends SP auth cookies
+    });
+
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+    allClaims = data.value || [];
+    onDataLoaded();
+
+  } catch (directErr) {
+    console.warn('Direct fetch failed (expected if cross-origin):', directErr.message);
+    tryRequestExecutor();
+  }
+}
+
+function tryRequestExecutor() {
+  // Attempt SP.RequestExecutor cross-domain library
+  const scriptTag = document.createElement('script');
+  scriptTag.src = SP_SITE_URL + '/_layouts/15/SP.RequestExecutor.js';
+  scriptTag.onload = function () {
+    try {
+      const executor = new SP.RequestExecutor(SP_SITE_URL);
+      executor.executeAsync({
+        url: SP_SITE_URL + `/_api/web/lists/getbytitle('${CLAIMS_LIST}')/items` +
+          `?$select=${CLAIM_FIELDS}&$top=5000&$orderby=Id desc`,
+        method: 'GET',
+        headers: { 'Accept': 'application/json;odata=nometadata' },
+        success: function (response) {
+          const data = JSON.parse(response.body);
+          allClaims = data.value || [];
+          onDataLoaded();
+        },
+        error: function (response) {
+          console.warn('RequestExecutor failed:', response.statusCode);
+          showFallbackMessage();
+        }
+      });
+    } catch (e) {
+      console.warn('RequestExecutor error:', e);
+      showFallbackMessage();
+    }
+  };
+  scriptTag.onerror = function () {
+    console.warn('Could not load SP.RequestExecutor.js');
+    showFallbackMessage();
+  };
+  document.head.appendChild(scriptTag);
+}
+
+function showFallbackMessage() {
+  document.getElementById('resultsContainer').innerHTML = `
+    <div class="error-msg">
+      <strong>Cross-origin access blocked.</strong><br><br>
+      This dashboard cannot reach SharePoint from this external domain.
+      To fix this, upload this HTML file to your SharePoint site's
+      <strong>Site Assets</strong> library and embed it from there.<br><br>
+      <em>Go to: ${SP_SITE_URL}/SiteAssets → Upload this file → Embed on your page.</em>
+    </div>`;
+}
+
+// ================================================================
+// POST DATA-LOAD SETUP
+// ================================================================
+function onDataLoaded() {
+  populateDropdown('filterCustomer', 'Customer_Name');
+  populateDropdown('filterDecision', 'Decision');
+  populateDropdown('filterStatus', 'Status');
+  populateDropdown('filterEngine', 'Engine_Make_Model');
+  filteredClaims = [...allClaims];
+  updateSummary(filteredClaims);
+  renderTable();
+  document.getElementById('exportLink').style.display = '';
+}
+
+function populateDropdown(elementId, fieldName) {
+  const el = document.getElementById(elementId);
+  const values = [...new Set(allClaims.map(c => c[fieldName]).filter(Boolean))].sort();
+  values.forEach(val => {
+    const opt = document.createElement('option');
+    opt.value = val;
+    opt.textContent = val;
+    el.appendChild(opt);
+  });
+}
+
+// ================================================================
+// FILTERING
+// ================================================================
+function applyFilters() {
+  const customer = document.getElementById('filterCustomer').value;
+  const decision = document.getElementById('filterDecision').value;
+  const status   = document.getElementById('filterStatus').value;
+  const engine   = document.getElementById('filterEngine').value;
+  const dateFrom = document.getElementById('filterDateFrom').value;
+  const dateTo   = document.getElementById('filterDateTo').value;
+  const search   = document.getElementById('filterSearch').value.toLowerCase().trim();
+
+  filteredClaims = allClaims.filter(c => {
+    if (customer && c.Customer_Name !== customer) return false;
+    if (decision && c.Decision !== decision) return false;
+    if (status && c.Status !== status) return false;
+    if (engine && c.Engine_Make_Model !== engine) return false;
+
+    if (dateFrom && c.RMA_Date) {
+      if (new Date(c.RMA_Date) < new Date(dateFrom)) return false;
+    }
+    if (dateTo && c.RMA_Date) {
+      if (new Date(c.RMA_Date) > new Date(dateTo + 'T23:59:59')) return false;
+    }
+
+    if (search) {
+      const haystack = [
+        c.RMA_Number, c.Invoice_Number, c.Customer_Name,
+        c.Engine_Make_Model, c.Engine_Serial, c.Title,
+        c.Failure_Description
+      ].filter(Boolean).join(' ').toLowerCase();
+      if (!haystack.includes(search)) return false;
+    }
+
+    return true;
+  });
+
+  currentPage = 1;
+  updateSummary(filteredClaims);
+  renderTable();
+}
+
+function clearFilters() {
+  document.getElementById('filterCustomer').value = '';
+  document.getElementById('filterDecision').value = '';
+  document.getElementById('filterStatus').value = '';
+  document.getElementById('filterEngine').value = '';
+  document.getElementById('filterDateFrom').value = '';
+  document.getElementById('filterDateTo').value = '';
+  document.getElementById('filterSearch').value = '';
+  filteredClaims = [...allClaims];
+  currentPage = 1;
+  updateSummary(filteredClaims);
+  renderTable();
+}
+
+// ================================================================
+// SUMMARY CARDS
+// ================================================================
+function updateSummary(claims) {
+  document.getElementById('totalCount').textContent = claims.length;
+  document.getElementById('approvedCount').textContent =
+    claims.filter(c => (c.Decision || '').toLowerCase() === 'approved').length;
+  document.getElementById('deniedCount').textContent =
+    claims.filter(c => (c.Decision || '').toLowerCase() === 'denied').length;
+  document.getElementById('pendingCount').textContent =
+    claims.filter(c => !c.Decision || (c.Decision || '').toLowerCase() === 'pending').length;
+}
+
+// ================================================================
+// SORTING
+// ================================================================
+function sortBy(field) {
+  if (sortField === field) {
+    sortAsc = !sortAsc;
+  } else {
+    sortField = field;
+    sortAsc = true;
+  }
+  filteredClaims.sort((a, b) => {
+    let va = a[field] || '';
+    let vb = b[field] || '';
+    if (typeof va === 'number' && typeof vb === 'number') {
+      return sortAsc ? va - vb : vb - va;
+    }
+    va = String(va).toLowerCase();
+    vb = String(vb).toLowerCase();
+    if (va < vb) return sortAsc ? -1 : 1;
+    if (va > vb) return sortAsc ? 1 : -1;
+    return 0;
+  });
+  currentPage = 1;
+  renderTable();
+}
+
+// ================================================================
+// RENDERING
+// ================================================================
+function formatDate(ds) {
+  if (!ds) return '';
+  const d = new Date(ds);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function badge(value, type) {
+  if (!value) return '';
+  const cls = {
+    'approved': 'badge-approved', 'denied': 'badge-denied',
+    'pending': 'badge-pending', 'open': 'badge-open',
+    'closed': 'badge-closed', 'in review': 'badge-open'
+  }[value.toLowerCase()] || 'badge-pending';
+  return `<span class="badge ${cls}">${value}</span>`;
+}
+
+function th(label, field) {
+  const arrow = sortField === field ? (sortAsc ? ' &#9650;' : ' &#9660;') : '';
+  return `<th onclick="sortBy('${field}')">${label}<span class="sort-arrow">${arrow}</span></th>`;
+}
+
+function renderTable() {
+  const total = filteredClaims.length;
+  const pages = Math.ceil(total / PAGE_SIZE);
+  const start = (currentPage - 1) * PAGE_SIZE;
+  const pageData = filteredClaims.slice(start, start + PAGE_SIZE);
+
+  document.getElementById('resultsCount').textContent =
+    `Showing ${start + 1}–${Math.min(start + PAGE_SIZE, total)} of ${total} claims` +
+    (total < allClaims.length ? ` (filtered from ${allClaims.length})` : '');
+
+  if (total === 0) {
+    document.getElementById('resultsContainer').innerHTML =
+      '<div class="no-results">No claims match your filters.</div>';
+    document.getElementById('pagination').innerHTML = '';
+    return;
+  }
+
+  let html = `<div class="table-wrap"><table>
+    <thead><tr>
+      ${th('RMA #','RMA_Number')}
+      ${th('Invoice','Invoice_Number')}
+      ${th('RMA Date','RMA_Date')}
+      ${th('Customer','Customer_Name')}
+      ${th('Engine','Engine_Make_Model')}
+      ${th('Serial','Engine_Serial')}
+      ${th('Date Failed','Date_Failed')}
+      ${th('Failure Hrs','Failure_Hours')}
+      ${th('Decision','Decision')}
+      ${th('Status','Status')}
+    </tr></thead><tbody>`;
+
+  pageData.forEach(c => {
+    const link = `${SP_SITE_URL}/Lists/${CLAIMS_LIST}/DispForm.aspx?ID=${c.Id}`;
+    html += `<tr>
+      <td><a class="claim-link" href="${link}" target="_top">${c.RMA_Number || c.Title || ''}</a></td>
+      <td>${c.Invoice_Number || ''}</td>
+      <td>${formatDate(c.RMA_Date)}</td>
+      <td>${c.Customer_Name || ''}</td>
+      <td>${c.Engine_Make_Model || ''}</td>
+      <td>${c.Engine_Serial || ''}</td>
+      <td>${formatDate(c.Date_Failed)}</td>
+      <td>${c.Failure_Hours != null ? c.Failure_Hours.toLocaleString() : ''}</td>
+      <td>${badge(c.Decision)}</td>
+      <td>${badge(c.Status)}</td>
+    </tr>`;
+  });
+
+  html += '</tbody></table></div>';
+  document.getElementById('resultsContainer').innerHTML = html;
+
+  // Pagination
+  let pHtml = '';
+  if (pages > 1) {
+    pHtml += `<button onclick="goPage(${currentPage-1})" ${currentPage===1?'disabled':''}>Prev</button>`;
+    for (let p = 1; p <= pages; p++) {
+      if (pages > 7 && Math.abs(p - currentPage) > 2 && p !== 1 && p !== pages) {
+        if (p === 2 || p === pages - 1) pHtml += `<button disabled>...</button>`;
+        continue;
+      }
+      pHtml += `<button class="${p===currentPage?'active':''}" onclick="goPage(${p})">${p}</button>`;
+    }
+    pHtml += `<button onclick="goPage(${currentPage+1})" ${currentPage===pages?'disabled':''}>Next</button>`;
+  }
+  document.getElementById('pagination').innerHTML = pHtml;
+}
+
+function goPage(p) {
+  const pages = Math.ceil(filteredClaims.length / PAGE_SIZE);
+  if (p < 1 || p > pages) return;
+  currentPage = p;
+  renderTable();
+}
+
+// ================================================================
+// EXPORT CSV
+// ================================================================
+function exportCSV() {
+  const headers = ['RMA_Number','Invoice_Number','RMA_Date','Customer_Name',
+    'Engine_Make_Model','Engine_Serial','Date_Failed','Failure_Hours','Decision','Status'];
+  let csv = headers.join(',') + '\n';
+  filteredClaims.forEach(c => {
+    csv += headers.map(h => {
+      let v = c[h] != null ? String(c[h]) : '';
+      v = v.replace(/"/g, '""');
+      return `"${v}"`;
+    }).join(',') + '\n';
+  });
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'warranty_claims_export.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// ================================================================
+// REAL-TIME FILTER EVENTS
+// ================================================================
+document.getElementById('filterSearch').addEventListener('input', debounce(applyFilters, 300));
+document.getElementById('filterCustomer').addEventListener('change', applyFilters);
+document.getElementById('filterDecision').addEventListener('change', applyFilters);
+document.getElementById('filterStatus').addEventListener('change', applyFilters);
+document.getElementById('filterEngine').addEventListener('change', applyFilters);
+document.getElementById('filterDateFrom').addEventListener('change', applyFilters);
+document.getElementById('filterDateTo').addEventListener('change', applyFilters);
+
+function debounce(fn, ms) {
+  let t;
+  return function(...args) { clearTimeout(t); t = setTimeout(() => fn.apply(this, args), ms); };
+}
+
+// ================================================================
+// INIT
+// ================================================================
+loadData();
+</script>
+</body>
+</html>
